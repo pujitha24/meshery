@@ -1349,7 +1349,13 @@ func (h *Handler) ExportModel(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	model := e[0].(*_model.ModelDefinition)
+	model, ok := e[0].(*_model.ModelDefinition)
+	if !ok {
+		err := fmt.Errorf("unexpected entity type %T for model export", e[0])
+		h.log.Error(err)
+		writeMeshkitError(rw, ErrExportModel(err, "model type assertion"), http.StatusInternalServerError)
+		return
+	}
 	//This path is used to so that the function can be aware of where the svg file is
 	//This is for relative path as we are inside meshery/server/cmd/main.go
 	//File is stored in Ui folder so we need to move 2 directories back
@@ -1388,13 +1394,25 @@ func (h *Handler) ExportModel(rw http.ResponseWriter, r *http.Request) {
 	components := []component.ComponentDefinition{}
 	// Components can be nil if hasComponents is false
 	if model.Components != nil {
-		components = model.Components.([]component.ComponentDefinition)
+		components, ok = model.Components.([]component.ComponentDefinition)
+		if !ok {
+			err := fmt.Errorf("unexpected components type %T for model %s", model.Components, model.Name)
+			h.log.Error(err)
+			writeMeshkitError(rw, ErrExportModel(err, "components type assertion"), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	relationships := []relationship.RelationshipDefinition{}
 	// Relationships can be nil if hasRelationships is false
 	if model.Relationships != nil {
-		relationships = model.Relationships.([]relationship.RelationshipDefinition)
+		relationships, ok = model.Relationships.([]relationship.RelationshipDefinition)
+		if !ok {
+			err := fmt.Errorf("unexpected relationships type %T for model %s", model.Relationships, model.Name)
+			h.log.Error(err)
+			writeMeshkitError(rw, ErrExportModel(err, "relationships type assertion"), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	model.Relationships = nil
@@ -1455,7 +1473,12 @@ func (h *Handler) ExportModel(rw http.ResponseWriter, r *http.Request) {
 		}
 
 		// 3. Send response
-		byt, _ = os.ReadFile(tarfileName)
+		byt, err = os.ReadFile(tarfileName)
+		if err != nil {
+			h.log.Error(err)
+			writeMeshkitError(rw, ErrExportModel(err, "OCI artifact read"), http.StatusInternalServerError)
+			return
+		}
 		rw.Header().Add("Content-Type", "application/x-tar")
 		rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.tar\"", model.Name))
 		rw.Header().Set("Content-Length", fmt.Sprintf("%d", len(byt)))
@@ -1474,7 +1497,12 @@ func (h *Handler) ExportModel(rw http.ResponseWriter, r *http.Request) {
 			writeMeshkitError(rw, ErrExportModel(err, "tar.gz write"), http.StatusInternalServerError)
 			return
 		}
-		byt, _ = os.ReadFile(tarfileName)
+		byt, err = os.ReadFile(tarfileName)
+		if err != nil {
+			h.log.Error(err)
+			writeMeshkitError(rw, ErrExportModel(err, "tar.gz read"), http.StatusInternalServerError)
+			return
+		}
 		rw.Header().Add("Content-Type", "application/gzip")
 		rw.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.tar.gz\"", model.Name))
 
